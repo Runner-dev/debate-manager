@@ -1,14 +1,14 @@
-import { type GetServerSidePropsContext } from "next";
-import {
-  getServerSession,
-  type NextAuthOptions,
-  type DefaultSession,
-} from "next-auth";
+import { type NextAuthOptions, type DefaultSession } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { env } from "~/env.mjs";
 import { prisma } from "~/server/db";
 import { z } from "zod";
+import { getSession } from "next-auth/react";
+import type { CreateNextContextOptions } from "@trpc/server/adapters/next";
+import type { NodeHTTPCreateContextFnOptions } from "@trpc/server/dist/adapters/node-http";
+import type { IncomingMessage } from "http";
+import type ws from "ws";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -30,14 +30,6 @@ declare module "next-auth" {
   //   // role: UserRole;
   // }
 }
-
-const GOOGLE_AUTHORIZATION_URL =
-  "https://accounts.google.com/o/oauth2/v2/auth?" +
-  new URLSearchParams({
-    prompt: "consent",
-    access_type: "offline",
-    response_type: "code",
-  }).toString();
 
 /**
  * Takes a token, and returns a new token with updated
@@ -92,9 +84,6 @@ async function refreshAccessToken(token: { refreshToken: string }) {
   }
 }
 
-console.log(env.GOOGLE_CLIENT_ID);
-console.log(env.GOOGLE_CLIENT_SECRET);
-
 /**
  * Options for NextAuth.js used to configure adapters, providers, callbacks, etc.
  *
@@ -108,6 +97,25 @@ export const authOptions: NextAuthOptions = {
         // session.user.role = user.role; <-- put other properties on the session here
       }
       return session;
+    },
+    async jwt({ token, user, account }) {
+      if (account && user) {
+        return {
+          accessToken: account.access_token,
+          // @ts-ignore-next-line
+          accessTokenExpires: Date.now() + account.expires_in * 1000,
+          refreshToken: account.refresh_token,
+          user,
+        };
+      }
+
+      // @ts-ignore-next-line
+      if (Date.now() < token.accessTokenExpires) {
+        return token;
+      }
+
+      // @ts-ignore-next-line
+      return refreshAccessToken(token);
     },
   },
   adapter: PrismaAdapter(prisma),
@@ -142,9 +150,10 @@ export const authOptions: NextAuthOptions = {
  *
  * @see https://next-auth.js.org/configuration/nextjs
  */
-export const getServerAuthSession = (ctx: {
-  req: GetServerSidePropsContext["req"];
-  res: GetServerSidePropsContext["res"];
-}) => {
-  return getServerSession(ctx.req, ctx.res, authOptions);
+export const getServerAuthSession = (
+  opts:
+    | CreateNextContextOptions
+    | NodeHTTPCreateContextFnOptions<IncomingMessage, ws>
+) => {
+  return getSession({ req: opts.req });
 };
