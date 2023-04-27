@@ -35,7 +35,7 @@ const SingleSpeakerDebateMode = ({
 
   return (
     <>
-      <div className="grid h-full grid-cols-3 gap-4">
+      <div className="grid h-full grid-cols-3 gap-4 items-start">
         <div
           className={` col-span-2 flex w-full flex-col items-stretch gap-4 rounded-lg bg-gray-200 p-4`}
         >
@@ -110,15 +110,16 @@ const SingleSpeakerDebateMode = ({
           </div>
         </div>
         {chair && (
-          <div className="h-min rounded-lg bg-gray-100 p-4">
-            <h2 className="mb-2 mt-4 text-2xl font-medium">Paises</h2>
+          <div className="h-full rounded-lg bg-gray-100 p-4">
+            <h2 className="mb-2 mt-4 text-2xl font-medium">Delegações</h2>
             {committeeData.countries.length == 0 && !chair && (
               <div className="text-lg italic">Nenhuma mão levantada</div>
             )}
+            <div className="max-h-[70vh] overflow-y-auto flex flex-col gap-1">
             {committeeData.countries.map((country) => (
               <div
                 key={country.id}
-                className="ml-2 mb-2 flex w-full items-center justify-between gap-2 text-left"
+                className="flex w-full items-center justify-between gap-2 text-left"
               >
                 <button
                   disabled={!chair}
@@ -134,6 +135,7 @@ const SingleSpeakerDebateMode = ({
                 </button>
               </div>
             ))}
+            </div>
           </div>
         )}
       </div>

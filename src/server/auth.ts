@@ -1,7 +1,7 @@
 import { type NextAuthOptions, type DefaultSession } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { env } from "~/env.mjs";
+import { env } from "~/env";
 import { prisma } from "~/server/db";
 import { z } from "zod";
 import { getSession } from "next-auth/react";
@@ -123,6 +123,7 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
+
       authorization: {
         params: {
           scope:

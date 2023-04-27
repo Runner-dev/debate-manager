@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 import Close from "~/icons/Close";
 
 const Modal = ({

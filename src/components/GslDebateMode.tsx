@@ -1,40 +1,21 @@
-import { Country, Delegate } from "@prisma/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type Country, type Delegate } from "@prisma/client";
+import { useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import Close from "~/icons/Close";
 import Pause from "~/icons/Pause";
 import Play from "~/icons/Play";
-import Plus from "~/icons/Plus";
 import Reset from "~/icons/Reset";
 import Settings from "~/icons/Settings";
 import User from "~/icons/User";
 import type { CommitteeData } from "~/server/api/routers/committeeData";
 import { api } from "~/utils/api";
 import calculateCurrentTimerValue from "~/utils/calculateCurrentTimerValue";
-import formatTime from "~/utils/formatTime";
 import CountryFlagName from "./CountryFlagName";
 import Modal from "./Modal";
 import Timer from "./Timer";
 
 const buttonIconClass = "w-6 h-6";
 const buttonBaseClass = "flex-1 flex justify-center text-white p-2 rounded-lg ";
-
-const calculateCurrentValue = ({
-  speechLastValue,
-  speechPlayedAt,
-}: {
-  speechPlayedAt: Date | null;
-  speechLastValue: number;
-}) =>
-  Math.round(
-    Math.max(
-      !!speechPlayedAt
-        ? speechLastValue -
-            (Date.now() - (speechPlayedAt?.getTime() || 0)) / 1000
-        : speechLastValue,
-      0
-    )
-  );
 
 const GslDebateMode = ({
   committeeData,
@@ -61,11 +42,6 @@ const GslDebateMode = ({
   const updateSpeechTimeModalInputRef = useRef<HTMLInputElement>(null);
 
   const [yieldTimeModalVisible, setYieldTimeModalVisible] = useState(false);
-
-  const formattedTotalTime = useMemo(
-    () => formatTime(committeeData.speechTotalTime),
-    [committeeData.speechTotalTime]
-  );
 
   const presentCountries = useMemo(() => {
     return committeeData.countries.filter(({ roll, id }) => {
@@ -103,9 +79,23 @@ const GslDebateMode = ({
     speechPlayedAt: playedAt,
   } = committeeData;
 
+  const { data: userData } = api.userData.getUserData.useQuery();
+  const canSignup = useMemo(
+    () =>
+      committeeData.acceptingSignups &&
+      committeeData.countries.filter(
+        ({ roll, id }) => roll !== "a" && id === userData?.delegate?.countryId
+      ).length > 0,
+    [
+      committeeData.acceptingSignups,
+      committeeData.countries,
+      userData?.delegate?.countryId,
+    ]
+  );
+
   return (
     <>
-      <div className="grid h-full grid-cols-3 gap-4">
+      <div className="grid h-full grid-cols-3 items-start gap-4">
         <div
           className={`${
             chair ? "col-span-2" : "col-span-3"
@@ -205,7 +195,7 @@ const GslDebateMode = ({
               {committeeData.listParticipants.map(({ country, id }) => (
                 <div
                   key={id}
-                  className="ml-2 mb-4 flex items-center justify-between gap-4"
+                  className="mb-4 ml-2 flex items-center justify-between gap-4"
                 >
                   <CountryFlagName country={country} />
                   {chair && (
@@ -234,7 +224,7 @@ const GslDebateMode = ({
                         Sair da Lista de Oradores
                       </button>
                     )
-                  : committeeData.acceptingSignups && (
+                  : canSignup && (
                       <button
                         className="mt-4 w-full max-w-md rounded-lg bg-blue-600 py-3 text-xl text-white disabled:cursor-not-allowed disabled:bg-blue-300"
                         onClick={() => {
@@ -250,16 +240,18 @@ const GslDebateMode = ({
         </div>
         {chair && (
           <div className="h-min rounded-lg bg-gray-100 p-4">
-            <h2 className="mb-4 text-2xl">Adicionar País na Lista</h2>
-            {presentCountries.map((country) => (
-              <button
-                key={country.id}
-                className="mb-2 flex w-full items-center justify-between rounded-md p-2 hover:bg-gray-200"
-                onClick={() => addListParticipant.mutate(country.id)}
-              >
-                <CountryFlagName country={country} />
-              </button>
-            ))}
+            <h2 className="mb-4 text-2xl">Adicionar Delegação à Lista</h2>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {presentCountries.map((country) => (
+                <button
+                  key={country.id}
+                  className="mb-2 flex w-full items-center justify-between rounded-md p-2 hover:bg-gray-200"
+                  onClick={() => addListParticipant.mutate(country.id)}
+                >
+                  <CountryFlagName country={country} />
+                </button>
+              ))}
+            </div>
             <button
               className={`${
                 committeeData.acceptingSignups ? "bg-red-500" : "bg-emerald-500"
@@ -321,18 +313,20 @@ const GslDebateMode = ({
         className="w-96 "
       >
         <h1 className="mb-4 text-3xl font-medium">Ceder Tempo</h1>
-        {committeeData.countries.map((country) => (
-          <button
-            className="rounded-md py-2 hover:bg-gray-300"
-            key={country.id}
-            onClick={() => {
-              yieldTime.mutate(country.id);
-              setYieldTimeModalVisible(false);
-            }}
-          >
-            <CountryFlagName country={country} />
-          </button>
-        ))}
+        <div className="flex max-h-[60vh] flex-col overflow-y-auto">
+          {committeeData.countries.map((country) => (
+            <button
+              className="rounded-md py-2 text-left hover:bg-gray-300"
+              key={country.id}
+              onClick={() => {
+                yieldTime.mutate(country.id);
+                setYieldTimeModalVisible(false);
+              }}
+            >
+              <CountryFlagName country={country} />
+            </button>
+          ))}
+        </div>
       </Modal>
     </>
   );

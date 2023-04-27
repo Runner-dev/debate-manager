@@ -1,10 +1,13 @@
+import { type Country } from "@prisma/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { getQueryKey } from "@trpc/react-query";
-import { NextPage } from "next";
+import { type NextPage } from "next";
 import { useState } from "react";
 import CountryFlagName from "~/components/CountryFlagName";
+import MotionInFocus from "~/components/MotionInFocus";
+import NewMotionModal from "~/components/NewMotionModal";
 import { api } from "~/utils/api";
-import { motionNames, TypedMotion } from "~/utils/motion";
+import { motionNames, type TypedMotion } from "~/utils/motion";
 
 const MotionsPage: NextPage = () => {
   const { data: motions } = api.motions.getMotions.useQuery();
@@ -31,9 +34,35 @@ const MotionsPage: NextPage = () => {
           );
           break;
         }
+        case "update": {
+          utils.setQueryData(
+            queryKey,
+            (oldData: Array<TypedMotion> | undefined) => {
+              if (oldData === undefined) return oldData;
+              const newData = oldData.map((motion) => {
+                if (motion.id !== data.id) return motion;
+                return data;
+              });
+              return newData;
+            }
+          );
+        }
+        case "delete": {
+          utils.setQueryData(
+            queryKey,
+            (oldData: Array<TypedMotion> | undefined) => {
+              if (oldData === undefined) return oldData;
+              const newData = oldData.filter((motion) => motion.id !== data);
+              return newData;
+            }
+          );
+        }
       }
     },
   });
+
+  const [newMotionModalVisible, setNewMotionModalVisible] = useState(false);
+  const onRequestClose = () => setNewMotionModalVisible(false);
 
   const [motionIndex, setMotionIndex] = useState(0);
 
@@ -52,17 +81,36 @@ const MotionsPage: NextPage = () => {
               className="w-full cursor-pointer rounded bg-white p-2 shadow transition hover:shadow-lg"
               onClick={() => setMotionIndex(i)}
             >
-              <div className="mb-2 text-2xl">{motionNames[type]}</div>
-              <div className="px-2">
-                <CountryFlagName inverted small country={country} />
-              </div>
+              <div className="mb-2 text-xl">{motionNames[type]}</div>
+              {country && (
+                <div className="px-2">
+                  <CountryFlagName
+                    inverted
+                    small
+                    country={country as Country}
+                  />
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        <button
+          className="mt-4 w-full rounded-md bg-green-600 p-2 text-white"
+          onClick={() => setNewMotionModalVisible(true)}
+        >
+          Nova Moção
+        </button>
       </div>
-      <div className="rounded-xl bg-gray-100 p-4 shadow-sm">
+      <div className="col-span-2 rounded-xl bg-gray-100 p-4 shadow-sm">
         {!focusedMotion && "Nenhuma moção selecionada"}
+        {focusedMotion && (
+          <MotionInFocus motion={focusedMotion} chair={!!userData.chair} />
+        )}
       </div>
+      <NewMotionModal
+        visible={newMotionModalVisible}
+        onRequestClose={onRequestClose}
+      />
     </main>
   );
 };

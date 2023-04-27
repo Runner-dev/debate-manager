@@ -1,11 +1,18 @@
 import { observable } from "@trpc/server/observable";
 import EventEmitter from "eventemitter3";
-import { motionToTyped, TypedMotion } from "~/utils/motion";
+import { z } from "zod";
+import {
+  baseMotionSchema,
+  motionToTyped,
+  type TypedMotion,
+} from "~/utils/motion";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 
 type UpdateEventData =
   | { type: "full"; data: Array<TypedMotion> }
-  | { type: "new"; data: TypedMotion };
+  | { type: "new"; data: TypedMotion }
+  | { type: "update"; data: TypedMotion }
+  | { type: "delete"; data: string };
 
 const eventEmitter = new EventEmitter();
 
@@ -32,6 +39,60 @@ export const motionsRouter = createTRPCRouter({
     const typedMotions = motions.map((motion) => motionToTyped(motion));
     return typedMotions;
   }),
+  updateMotion: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().cuid(),
+      })
+    )
+    .mutation(async ({ ctx: { prisma }, input }) => {
+      const motion = await prisma.motion.update({
+        where: { id: input.id },
+        data: input,
+      });
+
+      const typedMotion = motionToTyped(motion);
+      sendUpdateEvent(motion.committeeId, {
+        type: "update",
+        data: typedMotion,
+      });
+    }),
+  deleteMotion: protectedProcedure
+    .input(z.string().cuid())
+    .mutation(async ({ ctx: { prisma }, input }) => {
+      const motion = await prisma.motion.delete({
+        where: { id: input },
+        select: { committeeId: true },
+      });
+      sendUpdateEvent(motion.committeeId, { type: "delete", data: input });
+    }),
+  createMotion: protectedProcedure
+    .input(baseMotionSchema)
+    .mutation(async ({ ctx: { prisma, session }, input }) => {
+      const userData = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: { chair: true, delegate: { select: { country: true } } },
+      });
+      const committeeId =
+        userData?.chair?.committeeId ??
+        userData?.delegate?.country.committeeId ??
+        undefined;
+      if (!committeeId) return;
+      const countryId = userData?.delegate?.country.id || undefined;
+      const motion = await prisma.motion.create({
+        data: {
+          ...input,
+          committee: { connect: { id: committeeId } },
+          country: countryId ? { connect: { id: countryId } } : undefined,
+        },
+      });
+
+      const typedMotion = motionToTyped(motion);
+      sendUpdateEvent(motion.committeeId, {
+        type: "new",
+        data: typedMotion,
+      });
+    }),
   onMotionsUpdate: protectedProcedure.subscription(
     async ({ ctx: { session, prisma } }) => {
       const userCommittee = await prisma.committee.findFirst({
@@ -44,7 +105,7 @@ export const motionsRouter = createTRPCRouter({
             },
             { chairs: { some: { userId: session.user.id } } },
           ],
-        },
+        }, 
       });
 
       if (!userCommittee) return;

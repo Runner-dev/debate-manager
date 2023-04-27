@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import useTimer from "~/hooks/useTimer";
 import formatTime from "~/utils/formatTime";
 
@@ -11,7 +11,9 @@ const Timer = ({
   totalTime: number;
   lastValue: number;
   playedAt: Date | null;
-  buttons: React.ReactNode | ((timerData: {playing: boolean}) => React.ReactNode);
+  buttons:
+    | React.ReactNode
+    | ((timerData: { playing: boolean }) => React.ReactNode);
 }) => {
   const { formattedCurrentValue, playing } = useTimer({
     lastValue,
@@ -20,11 +22,12 @@ const Timer = ({
 
   const formattedTotalTime = useMemo(() => formatTime(totalTime), [totalTime]);
 
-  const children = typeof buttons === "function" ? buttons({playing}) : buttons;
+  const children =
+    typeof buttons === "function" ? buttons({ playing }) : buttons;
 
   return (
     <>
-      <div className="flex-1 rounded-lg bg-gray-100 py-8 text-center text-6xl font-bold">
+      <div className="h-min flex-1 flex-grow-0 rounded-lg bg-gray-100 py-8 text-center text-6xl font-bold">
         {formattedCurrentValue} / {formattedTotalTime}
       </div>
       {buttons && <div className="flex w-full gap-2">{children}</div>}

@@ -16,6 +16,8 @@ import EventEmitter from "eventemitter3";
 import { z } from "zod";
 
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import calculateCurrentTimerValue from "~/utils/calculateCurrentTimerValue";
+import { speechesRouter } from "./speeches";
 
 const eventEmitter = new EventEmitter();
 
@@ -233,7 +235,7 @@ export const committeeDataRouter = createTRPCRouter({
           ],
         },
         include: {
-          countries: true,
+          countries: {orderBy: {shortName: "asc"}},
           gslData: {
             include: {
               listParticipants: {
@@ -556,10 +558,24 @@ export const committeeDataRouter = createTRPCRouter({
         }
       }
 
+      const speechCaller = speechesRouter.createCaller({ session, prisma });
       // Cleanup old data if necessary
       switch (userCommittee.currentMode) {
         case "mod": {
-          await prisma.moderatedData.deleteMany({
+          const modData = await prisma.moderatedData.findFirst({
+            where: { committeeId: userCommittee.id },
+          });
+          modData?.speechId &&
+            (await speechCaller.updateSpeech({
+              id: modData.speechId,
+              length:
+                modData.speechTotalTime -
+                calculateCurrentTimerValue({
+                  playedAt: modData.speechPlayedAt,
+                  lastValue: modData.speechLastValue,
+                }),
+            }));
+          await prisma.moderatedData.delete({
             where: {
               committeeId: userCommittee.id,
             },
@@ -575,6 +591,19 @@ export const committeeDataRouter = createTRPCRouter({
           break;
         }
         case "single": {
+          const singleData = await prisma.singleSpeakerData.findFirst({
+            where: { committeeId: userCommittee.id },
+          });
+          singleData?.speechId &&
+            (await speechCaller.updateSpeech({
+              id: singleData.speechId,
+              length:
+                singleData.speechTotalTime -
+                calculateCurrentTimerValue({
+                  playedAt: singleData.speechPlayedAt,
+                  lastValue: singleData.speechLastValue,
+                }),
+            }));
           await prisma.singleSpeakerData.deleteMany({
             where: {
               committeeId: userCommittee.id,
@@ -810,28 +839,77 @@ export const committeeDataRouter = createTRPCRouter({
     .input(z.string().cuid())
     .mutation(async ({ ctx: { prisma, session }, input }) => {
       const userCommittee = await getUserCommmittee(prisma, session.user.id);
+      const speechCaller = speechesRouter.createCaller({ session, prisma });
 
       if (userCommittee.currentMode === "gsl") {
+        const gslData = await prisma.gslData.findFirst({
+          where: { committeeId: userCommittee.id },
+        });
+        if (!gslData) return;
+        if (gslData?.speechId) {
+          await speechCaller.updateSpeech({
+            id: gslData.speechId,
+            length:
+              gslData.speechTotalTime -
+              calculateCurrentTimerValue({
+                playedAt: gslData.speechPlayedAt,
+                lastValue: gslData.speechLastValue,
+              }),
+          });
+        }
+
+        const speech = await speechCaller.createSpeech({
+          committeeId: userCommittee.id,
+          countryId: input,
+        });
+
         const result = await prisma.gslData.update({
           where: { committeeId: userCommittee.id },
-          data: { speakerId: input },
+          data: { speakerId: input, speechId: speech.id },
           select: { speakerId: true, currentSpeaker: true },
         });
 
-        sendUpdateEvent(userCommittee.id, { type: "partial", data: result });
+        sendUpdateEvent(userCommittee.id, {
+          type: "partial",
+          data: result,
+        });
       } else if (userCommittee.currentMode === "mod") {
+        const modData = await prisma.moderatedData.findFirst({
+          where: { committeeId: userCommittee.id },
+        });
+        if (!modData) return;
+        if (modData?.speechId) {
+          await speechCaller.updateSpeech({
+            id: modData.speechId,
+            length:
+              modData.speechTotalTime -
+              calculateCurrentTimerValue({
+                playedAt: modData.speechPlayedAt,
+                lastValue: modData.speechLastValue,
+              }),
+          });
+        }
+
+        const speech = await speechCaller.createSpeech({
+          committeeId: userCommittee.id,
+          countryId: input,
+        });
         const result = await prisma.moderatedData.update({
           where: { committeeId: userCommittee.id },
-          data: { speakerId: input },
+          data: { speakerId: input, speechId: speech.id },
           select: { speakerId: true, currentSpeaker: true },
         });
 
-        sendUpdateEvent(userCommittee.id, { type: "partial", data: result });
+        sendUpdateEvent(userCommittee.id, {
+          type: "partial",
+          data: result,
+        });
       }
     }),
 
   nextSpeaker: protectedProcedure.mutation(
     async ({ ctx: { prisma, session } }) => {
+      const speechCaller = speechesRouter.createCaller({ session, prisma });
       const userCommittee = await getGslUserCommittee(prisma, session.user.id);
 
       const currentListParticipants = await prisma.listParticipants.findMany({
@@ -853,7 +931,16 @@ export const committeeDataRouter = createTRPCRouter({
             speechPlayedAt: null,
           },
         });
-
+        if (userCommittee.gslData.speechId)
+          await speechCaller.updateSpeech({
+            id: userCommittee.gslData.speechId,
+            length:
+              userCommittee.gslData.speechTotalTime -
+              calculateCurrentTimerValue({
+                lastValue: userCommittee.gslData.speechLastValue,
+                playedAt: userCommittee.gslData.speechPlayedAt,
+              }),
+          });
         sendUpdateEvent(userCommittee.id, {
           type: "partial",
           data: {
@@ -865,15 +952,29 @@ export const committeeDataRouter = createTRPCRouter({
 
         return;
       }
+      const newSpeech = await speechCaller.createSpeech({
+        committeeId: userCommittee.id,
+        countryId: first.countryId,
+      });
 
+      await (userCommittee.gslData.speechId &&
+        speechCaller.updateSpeech({
+          id: userCommittee.gslData.speechId,
+          length:
+            userCommittee.gslData.speechTotalTime -
+            calculateCurrentTimerValue({
+              lastValue: userCommittee.gslData.speechLastValue,
+              playedAt: userCommittee.gslData.speechPlayedAt,
+            }),
+        }));
       await prisma.listParticipants.delete({ where: { id: first.id } });
-
       await prisma.gslData.update({
         where: { id: userCommittee.gslData.id },
         data: {
           speakerId: first.countryId,
           speechLastValue: userCommittee.gslData.speechTotalTime,
           speechPlayedAt: null,
+          speechId: newSpeech.id,
         },
       });
 
@@ -938,12 +1039,29 @@ export const committeeDataRouter = createTRPCRouter({
     .input(z.string().cuid())
     .mutation(async ({ ctx: { session, prisma }, input }) => {
       const userCommittee = await getUserCommmittee(prisma, session.user.id);
+      const speechCaller = speechesRouter.createCaller({ session, prisma });
+
       switch (userCommittee.currentMode) {
         case "mod": {
           const userCommittee = await getModUserCommittee(
             prisma,
             session.user.id
           );
+          userCommittee?.moderatedData.speechId &&
+            (await speechCaller.updateSpeech({
+              id: userCommittee.moderatedData.speechId,
+              length:
+                userCommittee.moderatedData.speechTotalTime -
+                calculateCurrentTimerValue({
+                  playedAt: userCommittee.moderatedData.speechPlayedAt,
+                  lastValue: userCommittee.moderatedData.speechLastValue,
+                }),
+            }));
+
+          const speech = await speechCaller.createSpeech({
+            committeeId: userCommittee.id,
+            countryId: input,
+          });
 
           const result = await prisma.moderatedData.update({
             where: { committeeId: userCommittee.id },
@@ -951,6 +1069,7 @@ export const committeeDataRouter = createTRPCRouter({
               speakerId: input,
               speechLastValue: userCommittee.moderatedData.speechLastValue,
               speechPlayedAt: null,
+              speechId: speech.id,
             },
             select: {
               speakerId: true,
@@ -960,7 +1079,10 @@ export const committeeDataRouter = createTRPCRouter({
             },
           });
 
-          sendUpdateEvent(userCommittee.id, { type: "partial", data: result });
+          sendUpdateEvent(userCommittee.id, {
+            type: "partial",
+            data: result,
+          });
           break;
         }
         case "single": {
@@ -969,12 +1091,29 @@ export const committeeDataRouter = createTRPCRouter({
             session.user.id
           );
 
+          userCommittee?.singleSpeakerData.speechId &&
+            (await speechCaller.updateSpeech({
+              id: userCommittee.singleSpeakerData.speechId,
+              length:
+                userCommittee.singleSpeakerData.speechTotalTime -
+                calculateCurrentTimerValue({
+                  playedAt: userCommittee.singleSpeakerData.speechPlayedAt,
+                  lastValue: userCommittee.singleSpeakerData.speechLastValue,
+                }),
+            }));
+
+          const speech = await speechCaller.createSpeech({
+            committeeId: userCommittee.id,
+            countryId: input,
+          });
+
           const result = await prisma.singleSpeakerData.update({
             where: { committeeId: userCommittee.id },
             data: {
               speakerId: input,
               speechLastValue: userCommittee.singleSpeakerData.speechTotalTime,
               speechPlayedAt: null,
+              speechId: speech.id,
             },
             select: {
               speakerId: true,
@@ -984,7 +1123,10 @@ export const committeeDataRouter = createTRPCRouter({
             },
           });
 
-          sendUpdateEvent(userCommittee.id, { type: "partial", data: result });
+          sendUpdateEvent(userCommittee.id, {
+            type: "partial",
+            data: result,
+          });
           break;
         }
       }

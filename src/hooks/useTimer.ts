@@ -40,7 +40,7 @@ const useTimer = ({
     return () => {
       clearInterval(interval);
     };
-  }, [playedAt, lastValue]);
+  }, [playedAt, lastValue, playing]);
 
   const formattedCurrentValue = formatTime(currentValue);
 

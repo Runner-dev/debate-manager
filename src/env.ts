@@ -1,6 +1,6 @@
 import * as dotenv from "dotenv";
 dotenv.config();
-import { z } from "zod";
+import { type SafeParseReturnType, z } from "zod";
 
 /**
  * Specify your server-side environment variables schema here. This way you can ensure the app isn't
@@ -39,7 +39,7 @@ const client = z.object({
  *
  * @type {Record<keyof z.infer<typeof server> | keyof z.infer<typeof client>, string | undefined>}
  */
-const processEnv = {
+const processEnv: Record<keyof z.infer<typeof server> | keyof z.infer<typeof client>, string | undefined> = {
   DATABASE_URL: process.env.DATABASE_URL,
   NODE_ENV: process.env.NODE_ENV,
   NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
@@ -54,20 +54,21 @@ const processEnv = {
 
 const merged = server.merge(client);
 
-/** @typedef {z.input<typeof merged>} MergedInput */
-/** @typedef {z.infer<typeof merged>} MergedOutput */
-/** @typedef {z.SafeParseReturnType<MergedInput, MergedOutput>} MergedSafeParseReturn */
+type MergedInput = z.input<typeof merged>;
+type MergedOutput = z.infer<typeof merged>;
+type MergedSafeParseReturn = SafeParseReturnType<MergedInput, MergedOutput>;
 
-let env = /** @type {MergedOutput} */ (process.env);
+let env: MergedInput = process.env as MergedInput;
 
 if (!!process.env.SKIP_ENV_VALIDATION == false) {
   const isServer = typeof window === "undefined";
 
-  const parsed = /** @type {MergedSafeParseReturn} */ (
-    isServer
+  const parsed:
+    | MergedSafeParseReturn
+    | SafeParseReturnType<Record<string, never>, Record<string, never>> =
+    /** @type {MergedSafeParseReturn} */ isServer
       ? merged.safeParse(processEnv) // on server we can validate all env vars
-      : client.safeParse(processEnv) // on client we can only validate the ones that are exposed
-  );
+      : client.safeParse(processEnv); // on client we can only validate the ones that are exposed
 
   if (parsed.success === false) {
     console.error(
@@ -77,6 +78,7 @@ if (!!process.env.SKIP_ENV_VALIDATION == false) {
     throw new Error("Invalid environment variables");
   }
 
+  // @ts-ignore
   env = new Proxy(parsed.data, {
     get(target, prop) {
       if (typeof prop !== "string") return undefined;
@@ -88,7 +90,7 @@ if (!!process.env.SKIP_ENV_VALIDATION == false) {
             ? "❌ Attempted to access a server-side environment variable on the client"
             : `❌ Attempted to access server-side environment variable '${prop}' on the client`
         );
-      return target[/** @type {keyof typeof target} */ (prop)];
+      return target[prop];
     },
   });
 }

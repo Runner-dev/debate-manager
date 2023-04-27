@@ -39,10 +39,12 @@ const VotingDebateMode = ({
   }, [committeeData.votes]);
 
   const countriesWithVotes = useMemo(() => {
-    return committeeData.countries.map((country) => {
-      const vote = votesMap.get(country.id);
-      return { ...country, vote };
-    });
+    return committeeData.countries
+      .map((country) => {
+        const vote = votesMap.get(country.id);
+        return { ...country, vote };
+      })
+      .filter(({ roll }) => roll !== "a");
   }, [committeeData.countries, votesMap]);
 
   const actualCurrentIndex =
@@ -102,6 +104,8 @@ const VotingDebateMode = ({
   const delegateCanVote =
     committeeData.openToDelegateVotes &&
     delegate &&
+    countriesWithVotes.findIndex(({ id }) => id === delegate.countryId) !==
+      -1 &&
     !votesMap.get(delegate.countryId);
 
   return (
@@ -176,22 +180,37 @@ const VotingDebateMode = ({
             <div className="mt-4 flex flex-col gap-2 text-lg">
               <div className="flex items-center gap-2">
                 <div className="rounded-lg bg-green-700 p-1 text-white">
-                  {(results.for / committeeData.countries.length) * 100}%
+                  {(
+                    (results.for / committeeData.countries.length) *
+                    100
+                  ).toFixed(1)}
+                  %
                 </div>
                 A Favor
               </div>
               <div className="flex items-center gap-2">
                 <div className="rounded-lg bg-red-700 p-1 text-white">
-                  {(results.against / committeeData.countries.length) * 100}%
+                  {(
+                    (results.against / committeeData.countries.length) *
+                    100
+                  ).toFixed(1)}
+                  %
                 </div>
                 Contra
               </div>
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-yellow-600 p-1 text-white">
-                  {(results.abstain / committeeData.countries.length) * 100}%
-                </div>
-                Se Abstiveram
-              </div>
+              {results.abstain > 0 ||
+                (committeeData.type === "substantial" && (
+                  <div className="flex items-center gap-2">
+                    <div className="rounded-lg bg-yellow-600 p-1 text-white">
+                      {(
+                        (results.abstain / committeeData.countries.length) *
+                        100
+                      ).toFixed(1)}
+                      %
+                    </div>
+                    Se Abstiveram
+                  </div>
+                ))}
             </div>
           </div>
         </div>
@@ -217,6 +236,7 @@ const VotingDebateMode = ({
                     <>
                       <img
                         className="h-28 w-28 rounded-full object-cover shadow-lg"
+                        alt={`Bandeira ${currentCountry.name}`}
                         src={currentCountry.flag}
                         srcSet={`${currentCountry.flag.replace(
                           "h40",
@@ -238,7 +258,7 @@ const VotingDebateMode = ({
                 <div className="flex max-h-20 gap-4">
                   <button
                     onClick={voteHandlerFactory("for")}
-                    className={`max-h-16 rounded-lg bg-green-500 py-3 px-10 ${
+                    className={`max-h-16 rounded-lg bg-green-500 px-10 py-3 ${
                       chair ? "flex-1" : ""
                     }`}
                   >
@@ -248,7 +268,7 @@ const VotingDebateMode = ({
                     <button
                       disabled={canAbstain}
                       onClick={voteHandlerFactory("abstain")}
-                      className={`max-h-16 w-max flex-1 rounded-lg bg-yellow-500 py-3 px-10 ${
+                      className={`max-h-16 w-max flex-1 rounded-lg bg-yellow-500 px-10 py-3 ${
                         chair ? "flex-1" : ""
                       }`}
                     >
@@ -259,7 +279,7 @@ const VotingDebateMode = ({
                 <div className="flex max-h-20 gap-4">
                   <button
                     onClick={voteHandlerFactory("against")}
-                    className="flex-1 rounded-lg bg-red-500 py-3 px-10"
+                    className="flex-1 rounded-lg bg-red-500 px-10 py-3"
                   >
                     Contra
                   </button>
@@ -268,7 +288,7 @@ const VotingDebateMode = ({
                       onClick={() => {
                         incrementCurrentCountry();
                       }}
-                      className="max-h-16 flex-1 rounded-lg bg-gray-500 py-3 px-10"
+                      className="max-h-16 flex-1 rounded-lg bg-gray-500 px-10 py-3"
                     >
                       Pular
                     </button>
@@ -292,7 +312,6 @@ const VotingDebateMode = ({
                   <CountryFlagName country={country} />
                   {(() => {
                     const voteVal = vote?.vote;
-                    if (!voteVal || voteVal === "pass") return null;
                     let val: string | null = null;
                     let color: string | null = null;
                     switch (voteVal) {
@@ -327,7 +346,7 @@ const VotingDebateMode = ({
       </div>
 
       <Modal
-        visible={updateVotingTypeModalVisible}
+        visible={chair && updateVotingTypeModalVisible}
         onRequestClose={() => setUpdateVotingTypeModalVisible(false)}
         className="flex flex-col gap-4"
       >

@@ -38,6 +38,7 @@ const ModeratedDebateMode = ({
   const setSpeaker = api.committeeData.setSpeaker.useMutation();
   const yieldTime = api.committeeData.yieldTime.useMutation();
 
+
   const { formattedCurrentValue: formattedCaucusValue } = useTimer({
     lastValue: committeeData.lastValue,
     playedAt: committeeData.playedAt,
@@ -69,7 +70,7 @@ const ModeratedDebateMode = ({
           ...country,
           raisedHand: raisedHandsMap.get(country.id) === true,
         }))
-        .filter(({ raisedHand }) => chair || raisedHand)
+        .filter(({ raisedHand, roll }) => roll !== "a" && (chair || raisedHand))
         .sort((a, b) => {
           console.log(a, b);
           if (a.raisedHand === b.raisedHand) {
@@ -84,9 +85,23 @@ const ModeratedDebateMode = ({
     [raisedHandsMap, committeeData.countries, chair]
   );
 
+  const { data: userData } = api.userData.getUserData.useQuery();
+  const canRaiseHand = useMemo(
+    () =>
+      committeeData.acceptingHands &&
+      committeeData.countries.filter(
+        ({ roll, id }) => roll !== "a" && id === userData?.delegate?.countryId
+      ).length > 0,
+    [
+      committeeData.acceptingHands,
+      committeeData.countries,
+      userData?.delegate?.countryId,
+    ]
+  );
+
   return (
     <>
-      <div className="grid h-full grid-cols-3 gap-4">
+      <div className="grid h-full grid-cols-3 items-start gap-4">
         <div
           className={` col-span-2 flex w-full flex-col items-stretch gap-4 rounded-lg bg-gray-200 p-4`}
         >
@@ -184,49 +199,51 @@ const ModeratedDebateMode = ({
         </div>
         <div className="h-min rounded-lg bg-gray-100 p-4">
           <h2 className="mb-2 mt-4 text-2xl font-medium">
-            {chair ? "Países" : "Mãos Levantadas"}
+            {chair ? "Delegações" : "Mãos Levantadas"}
           </h2>
           {committeeData.raisedHands.length == 0 && !chair && (
             <div className="text-lg italic">Nenhuma mão levantada</div>
           )}
-          {processedCountries.map(({ raisedHand, ...country }) => (
-            <div
-              key={country.id}
-              className="ml-2 mb-2 flex w-full items-center justify-between gap-2 text-left"
-            >
-              <button
-                disabled={!chair}
-                className={`w-full rounded-md p-2 transition ${
-                  chair ? "hover:bg-gray-300" : ""
-                }`}
-                onClick={() => {
-                  if (!chair) return;
-                  setSpeaker.mutate(country.id);
-                  lowerHand.mutate(country.id);
-                }}
+          <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-1">
+            {processedCountries.map(({ raisedHand, ...country }) => (
+              <div
+                key={country.id}
+                className="flex w-full items-center justify-between gap-2 text-left"
               >
-                <CountryFlagName country={country} />
-              </button>
-              {chair && (
                 <button
-                  onClick={() => {
-                    if (raisedHand) {
-                      lowerHand.mutate(country.id);
-                    } else {
-                      raiseHand.mutate(country.id);
-                    }
-                  }}
-                  className={`flex h-8 w-8 items-center justify-center rounded-md ${
-                    raisedHand
-                      ? "text-gray-500 hover:text-red-500"
-                      : "text-gray-400 hover:text-green-500"
+                  disabled={!chair}
+                  className={`w-full rounded-md p-2 text-left transition ${
+                    chair ? "hover:bg-gray-300" : ""
                   }`}
+                  onClick={() => {
+                    if (!chair) return;
+                    setSpeaker.mutate(country.id);
+                    lowerHand.mutate(country.id);
+                  }}
                 >
-                  <RaisedHand full={raisedHand} className="h-6 w-6" />
+                  <CountryFlagName country={country} />
                 </button>
-              )}
-            </div>
-          ))}
+                {chair && (
+                  <button
+                    onClick={() => {
+                      if (raisedHand) {
+                        lowerHand.mutate(country.id);
+                      } else {
+                        raiseHand.mutate(country.id);
+                      }
+                    }}
+                    className={`flex h-8 w-8 items-center justify-center rounded-md ${
+                      raisedHand
+                        ? "text-gray-500 hover:text-red-500"
+                        : "text-gray-400 hover:text-green-500"
+                    }`}
+                  >
+                    <RaisedHand full={raisedHand} className="h-6 w-6" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
           {chair && (
             <button
               className={`${
@@ -253,7 +270,7 @@ const ModeratedDebateMode = ({
                 Abaixar Mão
               </button>
             ) : (
-              committeeData.acceptingHands && (
+              canRaiseHand && (
                 <button
                   className="mt-4 w-full max-w-md rounded-lg bg-blue-600 py-3 text-xl text-white disabled:cursor-not-allowed disabled:bg-blue-300"
                   onClick={() => {
@@ -311,7 +328,7 @@ const ModeratedDebateMode = ({
         onRequestClose={() => setYieldTimeModalVisible(false)}
       >
         <button
-          className="mr-4 -mt-4 self-end"
+          className="-mt-4 mr-4 self-end"
           onClick={() => {
             setYieldTimeModalVisible(false);
           }}

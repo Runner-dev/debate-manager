@@ -1,6 +1,6 @@
 import {
-  ChangeEventHandler,
-  HTMLProps,
+  type ChangeEventHandler,
+  type HTMLProps,
   useEffect,
   useRef,
   useState,
@@ -15,7 +15,7 @@ const DebouncedInput = ({
   customOnChange: (value: string) => void;
 } & HTMLProps<HTMLInputElement>) => {
   const [inputValue, setInputValue] = useState(customValue);
-  let timeout = useRef<null | NodeJS.Timeout>(null);
+  const timeout = useRef<null | NodeJS.Timeout>(null);
 
   const actualOnChange: ChangeEventHandler<HTMLInputElement> = (e) => {
     if (timeout.current) clearTimeout(timeout.current);

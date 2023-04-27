@@ -67,9 +67,9 @@ export const createTRPCContext = async (
  */
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
-import { NodeHTTPCreateContextFnOptions } from "@trpc/server/dist/adapters/node-http";
-import { IncomingMessage } from "http";
-import ws from "ws";
+import { type NodeHTTPCreateContextFnOptions } from "@trpc/server/dist/adapters/node-http";
+import { type IncomingMessage } from "http";
+import type ws from "ws";
 
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,

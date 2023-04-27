@@ -10,6 +10,7 @@ import UnmoderatedDebateMode from "~/components/UnmoderatedDebateMode";
 import SingleSpeakerDebateMode from "~/components/SingleSpeakerDebateMode";
 import VotingDebateMode from "~/components/VotingDebateMode";
 import { useQueryClient } from "@tanstack/react-query";
+import isDev from "~/utils/isDev";
 
 const Home: NextPage = () => {
   const { data: committeeData } = api.committeeData.getCommitteeData.useQuery();
@@ -23,8 +24,6 @@ const Home: NextPage = () => {
 
   const changeDebateMode = api.committeeData.changeDebateMode.useMutation();
 
-  console.log(committeeData);
-
   api.committeeData.onDebateModeUpdate.useSubscription(undefined, {
     onData({ type, data }) {
       console.log(type);
@@ -33,10 +32,10 @@ const Home: NextPage = () => {
           if (!oldData) return undefined;
           const newData = { ...oldData };
           for (const key of Object.keys(newData)) {
-            //@ts-ignore
-            if (typeof data[key] !== "undefined") {
+            if (typeof data[key as keyof typeof data] !== "undefined") {
               //@ts-ignore
-              newData[key] = data[key];
+              newData[key as keyof typeof data] =
+                data[key as keyof typeof data];
             }
           }
 
@@ -103,7 +102,7 @@ const Home: NextPage = () => {
           committeeData={committeeData}
         />
       )}
-      <ReactQueryDevtools />
+      {isDev() && <ReactQueryDevtools />}
     </main>
   );
 };

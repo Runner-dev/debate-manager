@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   // NOTE: When using postgresql, mysql or sqlserver, uncomment the @db.Text annotations in model Account below
   // Further reading:
   // https://next-auth.js.org/adapters/prisma#create-the-prisma-schema
@@ -31,7 +31,21 @@ model Delegate {
   user    User    @relation(fields: [userId], references: [id])
 
   countryId String
-  userId    String @unique
+  userId    String   @unique
+  speeches  Speech[]
+}
+
+model DelegateCode {
+  code      String  @id
+  name      String
+  country   Country @relation(fields: [countryId], references: [id])
+  countryId String
+}
+
+enum Roll {
+  p
+  pv
+  a
 }
 
 model Country {
@@ -40,27 +54,39 @@ model Country {
   shortName String
   flag      String
   committee Committee  @relation(fields: [committeeId], references: [id])
-  roll      String
+  roll      Roll
   delegates Delegate[]
 
-  gslSpeaker        GslData?
-  moderatedSpeaker  ModeratedData?
-  singleSpeaker     SingleSpeakerData?
+  gslSpeaker       GslData?
+  moderatedSpeaker ModeratedData?
+  singleSpeaker    SingleSpeakerData?
 
   listParticipation ListParticipants?
   raisedHand        RaisedHands?
 
-  votes             Vote[]
-  motions            Motion[]
+  votes   Vote[]
+  motions Motion[]
 
-  committeeId       String
+  committeeId   String
+  speeches      Speech[]
+  points        Point[]
+  delegateCodes DelegateCode[]
+  documents     Document[]
+}
+
+enum CurrentMode {
+  gsl
+  mod
+  unmod
+  voting
+  single
 }
 
 model Committee {
-  id          String  @id @default(cuid())
+  id          String      @id @default(cuid())
   name        String
   agenda      String?
-  currentMode String
+  currentMode CurrentMode
 
   chairs            Chair[]
   countries         Country[]
@@ -69,7 +95,10 @@ model Committee {
   unmoderatedData   UnmoderatedData?
   singleSpeakerData SingleSpeakerData?
   votingData        VotingData?
-  motions            Motion[]
+  motions           Motion[]
+  speeches          Speech[]
+  points            Point[]
+  documents         Document[]
 }
 
 model GslData {
@@ -79,12 +108,13 @@ model GslData {
   speechLastValue  Int
   speechPlayedAt   DateTime?
   currentSpeaker   Country?           @relation(fields: [speakerId], references: [id])
-  //currentSpeech Speech?
   listParticipants ListParticipants[]
   acceptingSignups Boolean
+  currentSpeech    Speech?            @relation(fields: [speechId], references: [id])
 
   committeeId String  @unique
   speakerId   String? @unique
+  speechId    String? @unique
 }
 
 model ListParticipants {
@@ -108,12 +138,13 @@ model ModeratedData {
   lastValue       Int
   playedAt        DateTime?
   currentSpeaker  Country?      @relation(fields: [speakerId], references: [id], onUpdate: Cascade, onDelete: Cascade)
-  // currentSpeech Speech?
+  currentSpeech   Speech?       @relation(fields: [speechId], references: [id])
   acceptingHands  Boolean
   raisedHands     RaisedHands[]
 
   committeeId String  @unique
   speakerId   String? @unique
+  speechId    String?
 }
 
 model RaisedHands {
@@ -144,10 +175,11 @@ model SingleSpeakerData {
   speechLastValue Int
   speechPlayedAt  DateTime?
   currentSpeaker  Country?  @relation(fields: [speakerId], references: [id])
-  // currentSpeech Speech?
+  currentSpeech   Speech?   @relation(fields: [speechId], references: [id])
 
   committeeId String  @unique
   speakerId   String? @unique
+  speechId    String?
 }
 
 model VotingData {
@@ -162,11 +194,17 @@ model VotingData {
   votes       Vote[]
 }
 
+enum VoteType {
+  for
+  against
+  abstain
+}
+
 model Vote {
   id         String     @id @default(cuid())
   votingData VotingData @relation(fields: [votingDataId], references: [id], onDelete: Cascade)
   country    Country    @relation(fields: [countryId], references: [id])
-  vote       String
+  vote       VoteType
 
   votingDataId String
   countryId    String
@@ -174,18 +212,93 @@ model Vote {
   @@unique([votingDataId, countryId])
 }
 
+model Speech {
+  id        String    @id @default(cuid())
+  committee Committee @relation(fields: [committeeId], references: [id])
+  country   Country   @relation(fields: [countryId], references: [id])
+  delegate  Delegate? @relation(fields: [delegateId], references: [id])
+  length    Int?
+  rating    Int?
+  comments  String?
+
+  createdAt DateTime @default(now())
+
+  committeeId String
+  countryId   String
+  delegateId  String?
+
+  GslData           GslData[]
+  ModeratedData     ModeratedData[]
+  SingleSpeakerData SingleSpeakerData[]
+}
+
+enum MotionType {
+  moderated
+  unmoderated
+  tour
+  timeAgainst
+  moveVote
+  adoptNoVote
+  introduceDocument
+  suspendDebate
+  recess
+  minuteOfSilence
+  appeal
+}
+
 model Motion {
-  id             String    @id @default(cuid())
-  committee      Committee @relation(fields: [committeeId], references: [id])
-  country        Country   @relation(fields: [countryId], references: [id])
-  type           String
+  id             String     @id @default(cuid())
+  committee      Committee  @relation(fields: [committeeId], references: [id])
+  country        Country?   @relation(fields: [countryId], references: [id])
+  type           MotionType
   topic          String?
   duration       Int?
   speechDuration Int?
-  note String?
+  note           String?
 
-  committeeId    String
-  countryId      String
+  committeeId String
+  countryId   String?
+}
+
+enum PointType {
+  personalPrivilege
+  information
+  order
+  response
+}
+
+model Point {
+  id        String    @id @default(cuid())
+  type      PointType
+  committee Committee @relation(fields: [committeeId], references: [id])
+  country   Country   @relation(fields: [countryId], references: [id])
+  createdAt DateTime  @default(now())
+
+  committeeId String
+  countryId   String
+}
+
+enum DocumentType {
+  positionPaper
+  draftResolution
+  ammendment
+}
+
+model Document {
+  id        String       @id @default(cuid())
+  title     String
+  type      DocumentType
+  state     String       @default("sent")
+  owner     Country      @relation(fields: [countryId], references: [id])
+  committee Committee    @relation(fields: [committeeId], references: [id])
+  comments  String       @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  url         String
+  countryId   String
+  committeeId String
 }
 
 // Necessary for Next auth
@@ -195,12 +308,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? // @db.Text
-  access_token      String? // @db.Text
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? // @db.Text
+  id_token          String? @db.Text
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 

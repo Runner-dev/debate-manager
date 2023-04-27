@@ -17,6 +17,7 @@ const CountryFlagName = ({
           small ? "h-6 w-6" : "h-10 w-10"
         } rounded-full object-cover shadow-md`}
         src={country.flag}
+        alt=""
       />
       {!inverted && country.shortName}
     </div>
